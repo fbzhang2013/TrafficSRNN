@@ -1,0 +1,7 @@
+*.csv
+*.h5
+*.json
+.DS_Store
+*.txt
+
+
