@@ -29,7 +29,7 @@ def hisAver(numEvents, testN):
     testPredict = np.zeros(test.shape)
     for i in range(testN):
         j = i%24
-        testPredict[i,:] = np.mean(train[range(j,train.shape[0],24)],axis=)
+        testPredict[i,:] = np.mean(train[range(j,train.shape[0],24),:],axis=0)
     #plt.plot(testPredict)
     #plt.show()
     testRMSE = math.sqrt(mean_squared_error(test, testPredict))
@@ -46,20 +46,26 @@ def ConvertSeriesToMatrix(numEvents, numEventsAround, Time, len1, len2, numWeek,
     	for j in range(numWeek):
     	    tmp.append(numEvents[i+len2-(j+1)*7*TimeEachDay,0])
             tmp.append(numEvents[i+len2-(j+1)*7*TimeEachDay,1])
-            for dataAround in numEventsAround:
-                tmp.append(dataAround[i+len2-(j+1)*7*TimeEachDay,0])
-                tmp.append(dataAround[i+len2-(j+1)*7*TimeEachDay,1])
     	#Daily dependence
     	for j in range(numDay):
     	    tmp.append(numEvents[i+len2-(j+1)*TimeEachDay,0])
             tmp.append(numEvents[i+len2-(j+1)*TimeEachDay,1])
-            for dataAround in numEventsAround:
-                tmp.append(dataAround[i+len2-(j+1)*TimeEachDay,0])
-                tmp.append(dataAround[i+len2-(j+1)*TimeEachDay,1])
     	#Hourly dependence
     	for j in range(i+len2-len1+1, i+len2):
     	    tmp.append(numEvents[j,0])
             tmp.append(numEvents[j,1])
+        #Weekly dependence around 
+        for j in range(numWeek):
+            for dataAround in numEventsAround:
+                tmp.append(dataAround[i+len2-(j+1)*7*TimeEachDay,0])
+                tmp.append(dataAround[i+len2-(j+1)*7*TimeEachDay,1])
+        #Daily dependence around
+        for j in range(numDay):
+            for dataAround in numEventsAround:
+                tmp.append(dataAround[i+len2-(j+1)*TimeEachDay,0])
+                tmp.append(dataAround[i+len2-(j+1)*TimeEachDay,1])
+        #Hourly dependence around
+        for j in range(i+len2-len1+1, i+len2):
             for dataAround in numEventsAround:
                 tmp.append(dataAround[j,0])
                 tmp.append(dataAround[j,1])
@@ -119,18 +125,18 @@ def RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay):
     model.add(Dropout(0.2))
     #Layer4: fully connected
     model.add(Dense(output_dim = 2, activation = 'sigmoid'))
-    adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
+    adam = optimizers.Adam(lr=0.0005, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     model.compile(loss = "mse", optimizer = adam)
     
     #Training the model
-    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 1, validation_split = 0.1, verbose = 1)
+    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 400, validation_split = 0.1, verbose = 1)
 
     #save the model
     model_json = model.to_json()
-    with open("Saved_models/model{0}_{1}.json".format(cor[0], cor[1]), "w") as json_file:
+    with open("Saved_models/model1{0}_{1}.json".format(cor[0], cor[1]), "w") as json_file:
         json_file.write(model_json)
     # serialize weights to HDF5
-    model.save_weights("Saved_models/model{0}_{1}.h5".format(cor[0], cor[1]))
+    model.save_weights("Saved_models/model1{0}_{1}.h5".format(cor[0], cor[1]))
     print("Saved model to disk")
 
     #Prediction
@@ -189,6 +195,6 @@ if __name__ == '__main__':
 
         #train, and save the model
         print 'Begin Training node ', cor
-        hisAver(numEvents, 10*24);
         res = RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay)
+        hisAver(numEvents, 10*24);
 

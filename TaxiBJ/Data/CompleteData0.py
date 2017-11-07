@@ -36,5 +36,5 @@ for year in [13,14,15,16]:
 
 	print 'shape after completion:', data.shape
 
-	f1 = h5py.File('BJ{0}_complete.h5'.format(year),'w')
+	f1 = h5py.File('BJ{0}_complete_0.h5'.format(year),'w')
 	f1.create_dataset('data', data=data)

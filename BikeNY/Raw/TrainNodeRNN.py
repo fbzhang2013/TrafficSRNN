@@ -20,16 +20,18 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 import argparse, h5py
 
+from keras.callbacks import ModelCheckpoint # save checkpoint
+
 parser = argparse.ArgumentParser()
 cor = []
 
 def hisAver(numEvents, testN):
-    train = numEvents[:-testN]
-    test = numEvents[-testN:]
+    train = numEvents[:-testN,:]
+    test = numEvents[-testN:,:]
     testPredict = np.zeros(test.shape)
     for i in range(testN):
         j = i%24
-        testPredict[i] = np.mean(train[range(j,train.shape[0],24)])
+        testPredict[i,:] = np.mean(train[range(j,train.shape[0],24),:],axis=0)
     #plt.plot(testPredict)
     #plt.show()
     testRMSE = math.sqrt(mean_squared_error(test, testPredict))
@@ -44,24 +46,29 @@ def ConvertSeriesToMatrix(numEvents, Time, len1, len2, numWeek, numDay, TimeEach
         tmp.append(Time[i+len2])    #Time
     	#Weekly dependence
     	for j in range(numWeek):
-    	    tmp.append(numEvents[i+len2-(j+1)*7*TimeEachDay])
+    	    tmp.append(numEvents[i+len2-(j+1)*7*TimeEachDay,0])
+            tmp.append(numEvents[i+len2-(j+1)*7*TimeEachDay,1])
     	#Daily dependence
     	for j in range(numDay):
-    	    tmp.append(numEvents[i+len2-(j+1)*TimeEachDay])
+    	    tmp.append(numEvents[i+len2-(j+1)*TimeEachDay,0])
+            tmp.append(numEvents[i+len2-(j+1)*TimeEachDay,1])
     	#Hourly dependence
     	for j in range(i+len2-len1+1, i+len2):
-    	    tmp.append(numEvents[j])
+    	    tmp.append(numEvents[j,0])
+            tmp.append(numEvents[j,1])
     	
     	#Label
-    	tmp.append(numEvents[i+len2])
+    	tmp.append(numEvents[i+len2,0])
+        tmp.append(numEvents[i+len2,1])
     	matrix.append(tmp)
     return matrix
 
 #RNN predictor
 def RNNPrediction(numEvents, Time, TimeEachDay):
     #Normalize data to (0, 1)
-    scaler1 = MinMaxScaler(feature_range = (0, 1))
-    numEvents = scaler1.fit_transform(numEvents)
+    MIN_event = numEvents.min()
+    MAX_event = numEvents.max()
+    numEvents = (numEvents - MIN_event)/(MAX_event - MIN_event)
 
     #Dependence
     numWeek = 4; numDay = 4; numHour = 5
@@ -75,10 +82,10 @@ def RNNPrediction(numEvents, Time, TimeEachDay):
     train_set = matrix[:-10*24, :]
     test_set = matrix[-10*24:, :]
      
-    x_train = train_set[:, :-1]
-    y_train = train_set[:, -1]
-    x_test = test_set[:, :-1]
-    y_test = test_set[:, -1]
+    x_train = train_set[:, :-2]
+    y_train = train_set[:, -2:]
+    x_test = test_set[:, :-2]
+    y_test = test_set[:, -2:]
     
     #Transform the training set into the LSTM format (number of samples, the dim of each elements)
     x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
@@ -98,12 +105,13 @@ def RNNPrediction(numEvents, Time, TimeEachDay):
     model.add(LSTM(output_dim = 64, return_sequences = False))
     model.add(Dropout(0.2))
     #Layer4: fully connected
-    model.add(Dense(output_dim = 1, activation = 'sigmoid'))
+    model.add(Dense(output_dim = 2, activation = 'sigmoid'))
     adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     model.compile(loss = "mse", optimizer = adam)
+    checkpointer = ModelCheckpoint(filepath="weights.hdf5", verbose=1, save_best_only=True)
     
     #Training the model
-    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 200, validation_split = 0.1, verbose = 1)
+    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 300, validation_split = 0.1, verbose = 1, callbacks=[checkpointer])
 
     #save the model
     model_json = model.to_json()
@@ -118,11 +126,11 @@ def RNNPrediction(numEvents, Time, TimeEachDay):
     testPredict = model.predict(x_test)
     
     #Invert the prediction
-    trainPredict = scaler1.inverse_transform(trainPredict)
-    testPredict = scaler1.inverse_transform(testPredict)
+    trainPredict = trainPredict*(MAX_event - MIN_event) + MIN_event
+    testPredict = testPredict*(MAX_event - MIN_event) + MIN_event
     
-    train = scaler1.inverse_transform(np.array(y_train))
-    test = scaler1.inverse_transform(np.array(y_test))
+    train = y_train*(MAX_event - MIN_event) + MIN_event
+    test = y_test*(MAX_event - MIN_event) + MIN_event
 
     print train.shape, test.shape
 
@@ -154,7 +162,7 @@ if __name__ == '__main__':
         TimeEachDay = 24
         
         #Events
-        numEvents = data[:,0,cor[0],cor[1]]
+        numEvents = data[:,:,cor[0],cor[1]]
         print 'numEvents Size: ', numEvents.shape
         numEvents = np.asarray(numEvents)
         #plt.plot(range(240),numEvents[0:240])

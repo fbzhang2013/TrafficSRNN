@@ -20,6 +20,9 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 import argparse, h5py
 
+from keras.callbacks import ModelCheckpoint # save checkpoint
+
+
 parser = argparse.ArgumentParser()
 cor = []
 
@@ -29,7 +32,7 @@ def hisAver(numEvents, testN):
     testPredict = np.zeros(test.shape)
     for i in range(testN):
         j = i%24
-        testPredict[i,:] = np.mean(train[range(j,train.shape[0],24)],axis=)
+        testPredict[i,:] = np.mean(train[range(j,train.shape[0],24),:],axis=0)
     #plt.plot(testPredict)
     #plt.show()
     testRMSE = math.sqrt(mean_squared_error(test, testPredict))
@@ -121,9 +124,10 @@ def RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay):
     model.add(Dense(output_dim = 2, activation = 'sigmoid'))
     adam = optimizers.Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.0)
     model.compile(loss = "mse", optimizer = adam)
+    checkpointer = ModelCheckpoint(filepath="weights.hdf5", verbose=1, save_best_only=True)
     
     #Training the model
-    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 1, validation_split = 0.1, verbose = 1)
+    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 200, validation_split = 0.1, verbose = 1, callbacks=[checkpointer])
 
     #save the model
     model_json = model.to_json()
@@ -189,6 +193,6 @@ if __name__ == '__main__':
 
         #train, and save the model
         print 'Begin Training node ', cor
-        hisAver(numEvents, 10*24);
         res = RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay)
+        hisAver(numEvents, 10*24);
 
