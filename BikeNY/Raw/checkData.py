@@ -1,7 +1,7 @@
 import numpy as np
 import h5py
 
-f = h5py.File('NYC14_M16x8_T60_NewEnd.h5')
+f = h5py.File('../NYC14_M16x8_T60_NewEnd.h5')
 data = f['data']
 data = np.asarray(data)
 InvalidIn = {}
@@ -15,5 +15,5 @@ for i in range(16):
 			InvalidIn[(i,j)] = np.sum(inflow)
 		if np.sum(outflow) < 1000:
 			InvalidOut[(i,j)] = np.sum(outflow)
-print InvalidIn
-print InvalidOut
+print 'Inflow zeros slot:sum': InvalidIn
+print 'Outflow zeros slot:sum': InvalidOut

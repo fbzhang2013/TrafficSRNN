@@ -31,14 +31,14 @@ for i in range(1,Time.shape[0]):
 		print 'missing {2} time slots between: {0} and {1}'.format(Time[i-1], Time[i], gap-1)#, total_len, i
 '''
 
-f1 = h5py.File('Data/BJ_Meteorology_corrected.h5', 'w')
+f1 = h5py.File('BJ_Meteorology_corrected.h5', 'w')
 f1.create_dataset('Temperature', data=Temperature)
 f1.create_dataset('Weather', data=Weather)
 f1.create_dataset('WindSpeed', data=WindSpeed)
 f1.create_dataset('date', data=Time)
 f1.close()
 
-text_file = open("Data/BJ_Holiday.txt", "r")
+text_file = open("BJ_Holiday.txt", "r")
 holidays = text_file.read().split('\n')
 
 
@@ -80,7 +80,9 @@ for year in [13,14,15,16]:
 	BJ_Holiday = BJ_Holiday.reshape(BJ_Holiday.shape[0],1)
 	TimePeriod = TimePeriod.reshape(TimePeriod.shape[0],1)
 	External_feature = np.concatenate((Tem, WSpeed,BJ_Holiday,Wea,TimePeriod),axis = 1)
-	print External_feature.shape
+
+	print External_feature.shape, External_feature.max(), External_feature.min()
+
 	np.savetxt('External_feature{0}.csv'.format(year), External_feature)
 
 

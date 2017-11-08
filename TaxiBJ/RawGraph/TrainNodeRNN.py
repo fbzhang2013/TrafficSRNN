@@ -24,8 +24,8 @@ from keras.callbacks import ModelCheckpoint # save checkpoint
 cor = [16,16]
 cor_around = [[cor[0]-1,cor[1]], [cor[0]+1,cor[1]], [cor[0],cor[1]-1], [cor[0],cor[1]+1]]
 
-def hisAver(data):
-    testN = data.shape[0] - int(round(0.9*data.shape[0]))
+def hisAver(data, N):
+    testN = N - int(round(0.9*N))    
     train = data[:-testN,:]
     test = data[-testN:,:]
     testPredict = np.zeros(test.shape)
@@ -96,6 +96,18 @@ def RNNPrediction(data_4years, External_4years, TimeEachDay):
         for c in cor_around:
             data_4years[i][:,:,c[0],c[1]] = (data_4years[i][:,:,c[0],c[1]] - MIN_TAXI)/(MAX_TAXI - MIN_TAXI)
 
+    MIN_ex = 1000*np.ones(External_4years[0].shape[1])
+    MAX_ex = np.zeros(External_4years[0].shape[1])
+    for external in External_4years:
+        MIN_ex = np.minimum(MIN_ex, external.min(axis=0))
+        MAX_ex = np.maximum(MAX_ex, external.max(axis=0))
+    #print MIN_ex.shape, MAX_ex.shape, MAX_ex - MIN_ex
+    for i in range(MIN_ex.shape[0]):
+        if MIN_ex[i] == MAX_ex[i]:
+            MAX_ex[i] = MAX_ex[i] + 1
+    for i in range(4):
+        External_4years[i] = np.divide(External_4years[i] - MIN_ex, MAX_ex - MIN_ex)
+
     #convert the data in each year into matrix, and then concate
     for i in range(4):
         #Dependence
@@ -143,7 +155,7 @@ def RNNPrediction(data_4years, External_4years, TimeEachDay):
     checkpointer = ModelCheckpoint(filepath="weights.hdf5", verbose=1, save_best_only=True)
     
     #Training the model
-    model.fit(x_train, y_train, batch_size = 128, nb_epoch = 1, validation_split = 0.2, verbose = 1, callbacks=[checkpointer])
+    model.fit(x_train, y_train, batch_size = 128, nb_epoch = 300, validation_split = 0.2, verbose = 1, callbacks=[checkpointer])
 
     #save the model
     model_json = model.to_json()
@@ -184,6 +196,7 @@ if __name__ == '__main__':
     External_4years = []
     External_4years_around = []
     # there are 4 years of data.
+    N = 0
     for year in [13,14,15,16]:
         f = h5py.File('../Data/BJ{0}_complete_0.h5'.format(year),'r')
         data = f['data']
@@ -194,6 +207,9 @@ if __name__ == '__main__':
         #plt.show()
         data_4years.append(data)
         External = np.genfromtxt('../Data/External_feature{0}.csv'.format(year))
+        External = np.asarray(External)
         External_4years.append(External)
-    hisAver(data_4years[3][:,:,cor[0],cor[1]])
+        N += data.shape[0]
+
+    hisAver(data_4years[3][:,:,cor[0],cor[1]], N)
     res = RNNPrediction(data_4years, External_4years, TimeEachDay)

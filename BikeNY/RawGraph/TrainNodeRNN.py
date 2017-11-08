@@ -87,7 +87,7 @@ def RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay):
         numEventsAround[i] = (numEventsAround[i] - MIN_event)/(MAX_event - MIN_event)
 
     #Dependence
-    numWeek = 4; numDay = 4; numHour = 5
+    numWeek = 4; numDay = 4; numHour = 24
     sequence_length1 = numHour + 1
     sequence_length2 = numWeek*7*TimeEachDay + 1
     matrix = ConvertSeriesToMatrix(numEvents, numEventsAround, Time, sequence_length1, sequence_length2, numWeek, numDay, TimeEachDay)
