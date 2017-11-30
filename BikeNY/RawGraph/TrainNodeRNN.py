@@ -22,9 +22,11 @@ import argparse, h5py
 
 from keras.callbacks import ModelCheckpoint # save checkpoint
 
+from checkData import findInvalid
 
-parser = argparse.ArgumentParser()
 cor = []
+MIN_event = 10000
+MAX_event = 0
 
 def hisAver(numEvents, testN):
     train = numEvents[:-testN,:]
@@ -37,6 +39,7 @@ def hisAver(numEvents, testN):
     #plt.show()
     testRMSE = math.sqrt(mean_squared_error(test, testPredict))
     print 'Historical average = ', testRMSE
+    return testRMSE
 
 #Convert data into (feature, label) format
 def ConvertSeriesToMatrix(numEvents, numEventsAround, Time, len1, len2, numWeek, numDay, TimeEachDay):
@@ -75,19 +78,8 @@ def ConvertSeriesToMatrix(numEvents, numEventsAround, Time, len1, len2, numWeek,
 
 #RNN predictor
 def RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay):
-    #Normalize data to (0, 1)
-    #Mannually use MinMax scaling here.
-    MIN_event = numEvents.min()
-    MAX_event = numEvents.max()
-    for data in numEventsAround:
-        MIN_event = min(data.min(),MIN_event)
-        MAX_event = max(data.max(),MAX_event)
-    numEvents = (numEvents - MIN_event)/(MAX_event - MIN_event)
-    for i in range(len(numEventsAround)):
-        numEventsAround[i] = (numEventsAround[i] - MIN_event)/(MAX_event - MIN_event)
-
     #Dependence
-    numWeek = 4; numDay = 4; numHour = 24
+    numWeek = 4; numDay = 4; numHour = 5
     sequence_length1 = numHour + 1
     sequence_length2 = numWeek*7*TimeEachDay + 1
     matrix = ConvertSeriesToMatrix(numEvents, numEventsAround, Time, sequence_length1, sequence_length2, numWeek, numDay, TimeEachDay)
@@ -127,7 +119,7 @@ def RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay):
     checkpointer = ModelCheckpoint(filepath="weights.hdf5", verbose=1, save_best_only=True)
     
     #Training the model
-    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 200, validation_split = 0.1, verbose = 1, callbacks=[checkpointer])
+    model.fit(x_train, y_train, batch_size = 64, nb_epoch = 300, validation_split = 0.1, verbose = 1, callbacks=[checkpointer])
 
     #save the model
     model_json = model.to_json()
@@ -160,6 +152,7 @@ def RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay):
     testScore = math.sqrt(mean_squared_error(test, testPredict))
     testScore2 = np.average(test-testPredict)
     print('Test Score: %.2f RMSE' % (testScore))
+    return testScore
         
 #The main function
 if __name__ == '__main__':
@@ -167,32 +160,43 @@ if __name__ == '__main__':
     f = h5py.File('../NYC14_M16x8_T60_NewEnd.h5')
     data = f['data']
     data = np.asarray(data)
+    #normalize data to (0,1).
+    MIN_event = data.min()
+    MAX_event = data.max()
+    data1 = (data - MIN_event)/(MAX_event - MIN_event)
 
-    #the following grids are all 0: (12,6), (4,6), (12,7)
+    InvalidIn, InvalidOut = findInvalid()
+    print InvalidIn
+    ndays = 183
+    TimeEachDay = 24
+    His_Aver = []
+    RMSE = []
+    for i in range(16):
+        for j in range(8):
+            if [i,j] not in InvalidIn and [i,j] not in InvalidOut:
+                cor = [i,j]    
+                #Events
+                numEvents = data1[:,:,cor[0],cor[1]] #numEvents has shape(N,2)
+                cor_around = [[cor[0]-1, cor[1]], [cor[0]+1, cor[1]], [cor[0], cor[1]-1], [cor[0], cor[1]+1]]
+                print 'numEvents Size: ', numEvents.shape
+                numEvents = np.asarray(numEvents)
 
-    for cor0 in [(4,5)]: #(8,4), (4,2), (12,2), (4,5),(12,5)
-        cor = cor0
-        ndays = 183
-        TimeEachDay = 24
-        
-        #Events
-        numEvents = data[:,:,cor[0],cor[1]] #numEvents has shape(N,2)
-        cor_around = [[cor[0]-1, cor[1]], [cor[0]+1, cor[1]], [cor[0], cor[1]-1], [cor[0], cor[1]+1]]
-        print 'numEvents Size: ', numEvents.shape
-        numEvents = np.asarray(numEvents)
-        #plt.plot(range(240),numEvents[0:240])
-        #plt.show()
-        numEventsAround = []
-        for c in cor_around:
-            numEventsAround.append(data[:,:,c[0],c[1]])
-        
-        #Use periodic time as the only external feature.
-        Time = ndays*range(1,25)
-        Time = np.asarray(Time)
-        Time = Time/24.0
+                numEventsAround = []
+                for c in cor_around:
+                    numEventsAround.append(data1[:,:,c[0],c[1]])
+                #Use periodic time as the only external feature.
+                Time = ndays*range(1,25)
+                Time = np.asarray(Time)
+                Time = Time/24.0
 
-        #train, and save the model
-        print 'Begin Training node ', cor
-        res = RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay)
-        hisAver(numEvents, 10*24);
-
+                #train, and save the model
+                His_Aver.append(hisAver(data[:,:,cor[0],cor[1]], 10*24));
+                print 'Begin Training node ', cor
+                res = RNNPrediction(numEvents, numEventsAround, Time, TimeEachDay)
+                RMSE.append(res)
+    RMSE = np.asarray(RMSE)
+    His_Aver = np.asarray(His_Aver)
+    print 'Average RMSE on the valid nodes: ', np.mean(RMSE)
+    print 'Average Historical average RMSE on the valid nodes: ', np.mean(His_Aver)
+    np.savetxt('RMSE.csv', RMSE)
+    np.savetxt('HisAver.csv',His_Aver)

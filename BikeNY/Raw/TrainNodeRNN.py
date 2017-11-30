@@ -19,11 +19,14 @@ from keras import optimizers
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import mean_squared_error
 import argparse, h5py
+from checkData import findInvalid
 
 from keras.callbacks import ModelCheckpoint # save checkpoint
 
-parser = argparse.ArgumentParser()
 cor = []
+MIN_event = 10000
+MAX_event = 0
+
 
 def hisAver(numEvents, testN):
     train = numEvents[:-testN,:]
@@ -36,6 +39,7 @@ def hisAver(numEvents, testN):
     #plt.show()
     testRMSE = math.sqrt(mean_squared_error(test, testPredict))
     print 'Historical average = ', testRMSE
+    return testRMSE
 
 #Convert data into (feature, label) format
 def ConvertSeriesToMatrix(numEvents, Time, len1, len2, numWeek, numDay, TimeEachDay):
@@ -65,13 +69,8 @@ def ConvertSeriesToMatrix(numEvents, Time, len1, len2, numWeek, numDay, TimeEach
 
 #RNN predictor
 def RNNPrediction(numEvents, Time, TimeEachDay):
-    #Normalize data to (0, 1)
-    MIN_event = numEvents.min()
-    MAX_event = numEvents.max()
-    numEvents = (numEvents - MIN_event)/(MAX_event - MIN_event)
-
     #Dependence
-    numWeek = 4; numDay = 4; numHour = 24
+    numWeek = 4; numDay = 4; numHour = 5
     sequence_length1 = numHour + 1
     sequence_length2 = numWeek*7*TimeEachDay + 1
     matrix = ConvertSeriesToMatrix(numEvents, Time, sequence_length1, sequence_length2, numWeek, numDay, TimeEachDay)
@@ -132,7 +131,7 @@ def RNNPrediction(numEvents, Time, TimeEachDay):
     train = y_train*(MAX_event - MIN_event) + MIN_event
     test = y_test*(MAX_event - MIN_event) + MIN_event
 
-    print train.shape, test.shape
+    print test[-100:,0]
 
     np.savetxt('test.csv', test)
     np.savetxt('testPredict.csv', testPredict)
@@ -144,6 +143,7 @@ def RNNPrediction(numEvents, Time, TimeEachDay):
     testScore = math.sqrt(mean_squared_error(test, testPredict))
     testScore2 = np.average(test-testPredict)
     print('Test Score: %.2f RMSE' % (testScore))
+    return testScore
         
 #The main function
 if __name__ == '__main__':
@@ -151,30 +151,44 @@ if __name__ == '__main__':
     f = h5py.File('../NYC14_M16x8_T60_NewEnd.h5')
     data = f['data']
     data = np.asarray(data)
-    #plt.plot(data[:,0,12,5])
-    #plt.show()
 
-    #the following grids are all 0: (12,6), (4,6), (12,7)
+    #normalize data to (0,1).
+    MIN_event = data.min()
+    MAX_event = data.max()
+    data1 = (data - MIN_event)/(MAX_event - MIN_event)
 
-    for cor0 in [(4,5)]: #(8,4), (4,2), (12,2), (4,5),(12,5)
-        cor = cor0
-        ndays = 183
-        TimeEachDay = 24
-        
-        #Events
-        numEvents = data[:,:,cor[0],cor[1]]
-        print 'numEvents Size: ', numEvents.shape
-        numEvents = np.asarray(numEvents)
-        #plt.plot(range(240),numEvents[0:240])
-        #plt.show()
+    InvalidIn, InvalidOut = findInvalid()
+    print InvalidIn
 
-        #Use periodic time as the only external feature.
-        Time = ndays*range(1,25)
-        Time = np.asarray(Time)
-        Time = Time/24.0
+    ndays = 183
+    TimeEachDay = 24
+    His_Aver = []
+    RMSE = []
+    for i in range(16):
+        for j in range(8):
+            if [i,j] not in InvalidIn and [i,j] not in InvalidOut:
+                cor = [i,j]
+                #Events
+                numEvents = data1[:,:,cor[0],cor[1]]
+                print 'numEvents Size: ', numEvents.shape
+                numEvents = np.asarray(numEvents)
+                #plt.plot(range(240),numEvents[0:240])
+                #plt.show()
 
-        #train, and save the model
-        print 'Begin Training node ', cor
-        hisAver(numEvents, 10*24);
-        res = RNNPrediction(numEvents, Time, TimeEachDay)
+                #Use periodic time as the only external feature.
+                Time = ndays*range(1,25)
+                Time = np.asarray(Time)
+                Time = Time/24.0
+
+                #train, and save the model
+                His_Aver.append(hisAver(data[:,:,cor[0],cor[1]], 10*24));
+                print 'Begin Training node ', cor
+                res = RNNPrediction(numEvents, Time, TimeEachDay)
+                RMSE.append(res)
+    RMSE = np.asarray(RMSE)
+    His_Aver = np.asarray(His_Aver)
+    print 'Average RMSE on the valid nodes: ', np.mean(RMSE)
+    print 'Average Historical average RMSE on the valid nodes: ', np.mean(His_Aver)
+    np.savetxt('RMSE.csv', RMSE)
+    np.savetxt('HisAver.csv',His_Aver)
 

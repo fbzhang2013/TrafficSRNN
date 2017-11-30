@@ -24,7 +24,7 @@ from keras.callbacks import ModelCheckpoint # save checkpoint
 cor = [16,16]
 
 def hisAver(data, N):
-    testN = N - int(round(0.9*N))
+    testN = 4*7*48
     print 'test examples: ', testN
     train = data[:-testN,:]
     test = data[-testN:,:]
@@ -36,6 +36,7 @@ def hisAver(data, N):
     #plt.show()
     testRMSE = math.sqrt(mean_squared_error(test, testPredict))
     print 'Historical average = ', testRMSE
+    return testRMSE
 
 #Convert data into (feature, label) format
 def ConvertSeriesToMatrix(data, external, len1, len2, numWeek, numDay, TimeEachDay):
@@ -102,9 +103,9 @@ def RNNPrediction(data_4years, External_4years, TimeEachDay):
             matrix = np.concatenate((matrix,matrix_temp),axis=0)
     print matrix.shape
     #Split dataset: 90% for training and 10% for testing
-    train_row = int(round(0.9*matrix.shape[0]))
-    train_set = matrix[:train_row, :]
-    test_set = matrix[train_row:, :]
+    
+    train_set = matrix[:-4*7*TimeEachDay, :]
+    test_set = matrix[-4*7*TimeEachDay:, :]
 
     x_train = train_set[:, :-2]
     y_train = train_set[:, -2:]
@@ -134,7 +135,7 @@ def RNNPrediction(data_4years, External_4years, TimeEachDay):
     checkpointer = ModelCheckpoint(filepath="weights.hdf5", verbose=1, save_best_only=True)
     
     #Training the model
-    model.fit(x_train, y_train, batch_size = 128, nb_epoch = 300, validation_split = 0.2, verbose = 1, callbacks=[checkpointer])
+    model.fit(x_train, y_train, batch_size = 128, nb_epoch = 300, validation_split = 0.1, verbose = 1, callbacks=[checkpointer])
 
     #save the model
     model_json = model.to_json()
@@ -154,16 +155,17 @@ def RNNPrediction(data_4years, External_4years, TimeEachDay):
     
     train = y_train*(MAX_TAXI - MIN_TAXI) + MIN_TAXI
     test = y_test*(MAX_TAXI - MIN_TAXI) + MIN_TAXI
+
     
     #Calculate the error
     trainScore = math.sqrt(mean_squared_error(train, trainPredict))
-    trainScore2 = np.average(train - trainPredict)
-    print('Train Score: %.2f RMSE' % (trainScore))
     testScore = math.sqrt(mean_squared_error(test, testPredict))
-    testScore2 = np.average(test-testPredict)
-    print('Test Score: %.2f RMSE' % (testScore))
+
+    print 'train and test score:', trainScore, testScore
     np.savetxt('testPredict.csv',testPredict)
-    print train.shape, test.shape
+    print 'pdf rmse = ', testScore
+    return testScore
+    
 
 #The main function
 if __name__ == '__main__':
@@ -190,5 +192,17 @@ if __name__ == '__main__':
         External_4years.append(External)
         N += data.shape[0]
 
-    hisAver(data_4years[3][:,:,cor[0],cor[1]], N)
-    res = RNNPrediction(data_4years, External_4years, TimeEachDay)
+    cor_rmse = {}
+    H = {}
+    for i in range(1,32,4):
+        for j in range(1,32,4):
+            cor = [i,j]
+            his_aver = hisAver(data_4years[3][:,:,cor[0],cor[1]], N)
+            H[(cor[0],cor[1])] = his_aver
+            print "Begin training on", cor
+            res = RNNPrediction(data_4years, External_4years, TimeEachDay)
+            cor_rmse[(cor[0],cor[1])] = res
+    H = np.asarray(H)
+    np.save('cor_rmse.npy',cor_rmse)
+    np.save('His_aver.npy',H)
+    print 'mean pdf rmse/His aver on the selected 64 nodes:', np.mean(cor_rmse.values()), np.mean(H.values())
